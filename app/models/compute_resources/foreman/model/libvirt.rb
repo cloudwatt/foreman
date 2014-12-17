@@ -1,3 +1,5 @@
+require 'uri'
+
 module Foreman::Model
   class Libvirt < ComputeResource
     include ComputeResourceConsoleCommon
@@ -154,9 +156,25 @@ module Foreman::Model
     protected
 
     def client
+      fog_options = {}
+
+      begin
+        uri = URI.parse url
+      rescue URI::InvalidURIError
+        logger.warn "Could not parse libvirt URI"
+      end
+
+      if uri && uri.scheme == 'qemu+tcp'
+        fog_options[:libvirt_username] = uri.user if uri.user
+        fog_options[:libvirt_password] = uri.password if uri.password
+      end
+
+      fog_options[:provider] = 'Libvirt'
+      fog_options[:libvirt_uri] = url
+
       # WARNING potential connection leak
       tries ||= 3
-      Thread.current[url] ||= ::Fog::Compute.new(:provider => "Libvirt", :libvirt_uri => url)
+      Thread.current[url] ||= ::Fog::Compute.new(fog_options)
     rescue ::Libvirt::RetrieveError
       Thread.current[url] = nil
       retry unless (tries -= 1).zero?
